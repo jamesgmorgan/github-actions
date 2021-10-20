@@ -1,0 +1,66 @@
+name: test
+
+on:
+  workflow_dispatch:
+    inputs:
+      secs:
+        description: 'Secs'
+        default: '1'
+        required: false
+      deploy_to:
+        description: 'Deploy to'
+        default: 'staging/vishnu'
+        required: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      slack-channel: ${{ github.event.repository.name }}-builds
+    name: setup
+    steps:
+      - name: Inputs
+        shell: bash
+        run: |
+          cat << 'EOF' | jq -r 'to_entries[] | "\(.key): \(.value)"'
+          ${{ toJSON(github.event.inputs) }}
+          EOF
+      - id: config
+        shell: bash
+        run: |
+          set -x
+          echo "Test"
+
+  build:
+    runs-on: ubuntu-latest
+    needs:
+      - setup
+    steps:
+      - name: Checkout test-actions
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.ONSHAPE_REPO_PAT }}
+      - name: Hello
+        run: |
+          set -x
+          secs="${{ github.event.inputs.secs }}"
+          deploy_to="${{ github.event.inputs.deploy_to }}"
+          echo "Waiting $secs deploy_to is ..:${{ github.event.inputs.deploy_to }}:.."
+          sleep $secs
+
+  slack:
+    if: failure()
+    name: Slack
+    needs:
+      - setup
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify
+        uses: onshape/actions-slack-notify-build@v1
+        with:
+          channel: ${{ needs.setup.outputs.slack-channel }}
+          status: SUCCESS
+          color: danger
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_TOKEN_GITHUB_ACTIONS }}
